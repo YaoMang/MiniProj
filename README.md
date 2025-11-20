@@ -1,4 +1,4 @@
-# Undergraduate_Toys
+# Mini Projects
 this is for self-entertainment, do not guarantee normal usage
 
-## ENJOY MY EARLY PROJECTS
+## FOR CODE SAVE USAGE
