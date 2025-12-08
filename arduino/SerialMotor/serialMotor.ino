@@ -33,8 +33,8 @@ public:
         if (enaPin != -1) digitalWrite(enaPin, !enaPolarity);
     }
 
-    // direction: true/false, speed: Hz, duration: seconds
-    void start(bool direction, float speedHz, float durationSec) {
+    // direction: true/false, speed: Hz, durationMs: 毫秒
+    void start(bool direction, float speedHz, uint32_t durationMs) {
         digitalWrite(dirPin, direction ? dirPolarity : !dirPolarity);
 
         if (speedHz <= 0) speedHz = 1;  // avoid div by zero
@@ -42,7 +42,9 @@ public:
 
         running = true;
         lastStepTime = micros();
-        unsigned long durationUs = (unsigned long)(durationSec * 1e6);
+
+        // durationMs 以毫秒为单位，转换为微秒
+        unsigned long durationUs = (unsigned long)durationMs * 1000UL;
         stopTime = lastStepTime + durationUs;   // safe (handles micros rollover)
     }
 
@@ -66,9 +68,9 @@ public:
 
             // DM542 requires pulse width >= 7.5us
             digitalWrite(pulPin, HIGH);
-            delayMicroseconds(50);     // safe pulse width
+            delayMicroseconds(20);     // 安全脉宽
             digitalWrite(pulPin, LOW);
-            delayMicroseconds(50);
+            delayMicroseconds(20);
         }
     }
 };
@@ -84,8 +86,8 @@ struct CommandFrame {
     uint8_t header;
     uint8_t motorMask;
     uint8_t directionMask;
-    int32_t speedHz;
-    int32_t durationSec;
+    int32_t speedHz;      // 步频 Hz
+    int32_t durationMs;   // 持续时间，毫秒
 };
 
 uint8_t buffer[FRAME_LENGTH];
@@ -135,14 +137,18 @@ void readSerial() {
 // =========================
 void processFrame() {
     CommandFrame frame;
-    memcpy(&frame, buffer, FRAME_LENGTH);   // safe, no endian issues
+    memcpy(&frame, buffer, FRAME_LENGTH);   // little-endian 对齐 OK
 
     if (frame.header != FRAME_HEADER) return;
+
+    // 负数防御：避免奇怪指令直接炸逻辑
+    if (frame.durationMs < 0) frame.durationMs = 0;
+    if (frame.speedHz < 0) frame.speedHz = -frame.speedHz;
 
     for (int i = 0; i < NUM_MOTORS; i++) {
         if (frame.motorMask & (1 << i)) {
             bool direction = (frame.directionMask & (1 << i)) != 0;
-            motors[i].start(direction, frame.speedHz, frame.durationSec);
+            motors[i].start(direction, (float)frame.speedHz, (uint32_t)frame.durationMs);
         }
     }
 
