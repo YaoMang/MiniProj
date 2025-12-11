@@ -68,9 +68,9 @@ public:
 
             // DM542 requires pulse width >= 7.5us
             digitalWrite(pulPin, HIGH);
-            delayMicroseconds(20);     // 安全脉宽
+            delayMicroseconds(15);     // 安全脉宽
             digitalWrite(pulPin, LOW);
-            delayMicroseconds(20);
+            delayMicroseconds(15);
         }
     }
 };
