@@ -7,10 +7,15 @@ public:
     bool dirPolarity;
     bool enaPolarity;
 
-    unsigned long stepIntervalUs;    
-    unsigned long lastStepTime;      
-    unsigned long stopTime;          
+    unsigned long stepIntervalUs;
+    unsigned long lastStepTime;
+    unsigned long stopTime;
     bool running;
+
+    // NEW: Pulse mode
+    bool pulseMode = false;
+    uint32_t targetPulses = 0;
+    uint32_t pulseCounter = 0;
 
     DM542(int pul, int dir, int ena = -1,
           bool dirPol = HIGH, bool enaPol = HIGH)
@@ -33,44 +38,75 @@ public:
         if (enaPin != -1) digitalWrite(enaPin, !enaPolarity);
     }
 
-    // direction: true/false, speed: Hz, durationMs: 毫秒
+    // =========================
+    // 原始 BF 指令：按时间运动 (durationMs)
+    // =========================
     void start(bool direction, float speedHz, uint32_t durationMs) {
+        pulseMode = false;    // NEW
+        pulseCounter = 0;     // NEW
+
         digitalWrite(dirPin, direction ? dirPolarity : !dirPolarity);
 
-        if (speedHz <= 0) speedHz = 1;  // avoid div by zero
+        if (speedHz <= 0) speedHz = 1;
         stepIntervalUs = (unsigned long)(1000000.0 / speedHz);
 
         running = true;
         lastStepTime = micros();
 
-        // durationMs 以毫秒为单位，转换为微秒
         unsigned long durationUs = (unsigned long)durationMs * 1000UL;
-        stopTime = lastStepTime + durationUs;   // safe (handles micros rollover)
+        stopTime = lastStepTime + durationUs;
     }
 
-    void stop() {
-        running = false;
+    // =========================
+    // 新增 AF 指令：按脉冲数运动 (pulseNum)
+    // =========================
+    void startByPulse(bool direction, float speedHz, uint32_t pulses) {
+        pulseMode = true;        // NEW
+        pulseCounter = 0;        // NEW
+        targetPulses = pulses;   // NEW
+
+        digitalWrite(dirPin, direction ? dirPolarity : !dirPolarity);
+
+        if (speedHz <= 0) speedHz = 1;
+        stepIntervalUs = (unsigned long)(1000000.0 / speedHz);
+
+        running = true;
+        lastStepTime = micros();
     }
 
+    // =========================
+    // 更新（同时支持两种模式）
+    // =========================
     void update() {
         if (!running) return;
 
         unsigned long now = micros();
 
-        // Safe comparison (micros rollover-aware)
-        if ((long)(now - stopTime) >= 0) {
-            running = false;
-            return;
+        // 时间模式超时判定
+        if (!pulseMode) {
+            if ((long)(now - stopTime) >= 0) {
+                running = false;
+                return;
+            }
         }
 
+        // 是否到了发步进脉冲的时间
         if ((long)(now - lastStepTime) >= (long)stepIntervalUs) {
             lastStepTime = now;
 
-            // DM542 requires pulse width >= 7.5us
+            // DM542 脉宽
             digitalWrite(pulPin, HIGH);
-            delayMicroseconds(15);     // 安全脉宽
+            delayMicroseconds(15);
             digitalWrite(pulPin, LOW);
             delayMicroseconds(15);
+
+            // 脉冲模式计数
+            if (pulseMode) {
+                pulseCounter++;
+                if (pulseCounter >= targetPulses) {
+                    running = false;
+                }
+            }
         }
     }
 };
@@ -79,15 +115,16 @@ public:
 // =========================
 // SERIAL COMMAND PROTOCOL
 // =========================
-#define FRAME_HEADER 0xBF
+#define FRAME_HEADER_TIME 0xBF
+#define FRAME_HEADER_PULSE 0xAF
 #define FRAME_LENGTH 11
 
 struct CommandFrame {
     uint8_t header;
     uint8_t motorMask;
     uint8_t directionMask;
-    int32_t speedHz;      // 步频 Hz
-    int32_t durationMs;   // 持续时间，毫秒
+    int32_t speedHz;      // BF: speed | AF: speed
+    int32_t durationMs;   // BF: duration | AF: pulseNum
 };
 
 uint8_t buffer[FRAME_LENGTH];
@@ -114,7 +151,7 @@ void readSerial() {
         uint8_t byte = Serial.read();
 
         if (!receiving) {
-            if (byte == FRAME_HEADER) {
+            if (byte == FRAME_HEADER_TIME || byte == FRAME_HEADER_PULSE) {
                 receiving = true;
                 index = 0;
                 buffer[index++] = byte;
@@ -137,18 +174,32 @@ void readSerial() {
 // =========================
 void processFrame() {
     CommandFrame frame;
-    memcpy(&frame, buffer, FRAME_LENGTH);   // little-endian 对齐 OK
+    memcpy(&frame, buffer, FRAME_LENGTH);
 
-    if (frame.header != FRAME_HEADER) return;
+    // 检查指令类别
+    bool isTimeMode  = (frame.header == FRAME_HEADER_TIME);
+    bool isPulseMode = (frame.header == FRAME_HEADER_PULSE);
+    if (!isTimeMode && !isPulseMode) return;
 
-    // 负数防御：避免奇怪指令直接炸逻辑
-    if (frame.durationMs < 0) frame.durationMs = 0;
+    // 参数防御
+    if (frame.durationMs < 0) frame.durationMs = -frame.durationMs;
     if (frame.speedHz < 0) frame.speedHz = -frame.speedHz;
 
     for (int i = 0; i < NUM_MOTORS; i++) {
         if (frame.motorMask & (1 << i)) {
             bool direction = (frame.directionMask & (1 << i)) != 0;
-            motors[i].start(direction, (float)frame.speedHz, (uint32_t)frame.durationMs);
+
+            if (isTimeMode) {
+                // BF 模式：按时间
+                motors[i].start(direction,
+                                (float)frame.speedHz,
+                                (uint32_t)frame.durationMs);
+            } else {
+                // AF 模式：按脉冲
+                motors[i].startByPulse(direction,
+                                       (float)frame.speedHz,
+                                       (uint32_t)frame.durationMs);
+            }
         }
     }
 
