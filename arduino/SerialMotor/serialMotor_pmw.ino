@@ -1,44 +1,47 @@
-// ===== Timer1 : OC1B = D10 ===== PWM =====
+// ===== Timer1 : OC1A = D9 (CTC toggle) =====
 void timer1_init() {
-    pinMode(10, OUTPUT);
+    pinMode(9, OUTPUT);
 
     TCCR1A = 0;
     TCCR1B = 0;
     TCNT1  = 0;
 
-    // Fast PWM, TOP = ICR1
-    TCCR1A |= (1 << WGM11);
-    TCCR1B |= (1 << WGM12) | (1 << WGM13);
+    // CTC mode
+    TCCR1B |= (1 << WGM12);
 
-    // 非反相 PWM on OC1B
-    TCCR1A |= (1 << COM1B1);
+    // ❌ 不要在 init 里连接 OC1A
+    // ❌ 不要在 init 里启动定时器
 
-    // prescaler = 1
-    TCCR1B |= (1 << CS10);
-
-    // 默认 1kHz
-    ICR1  = 15999;
-    OCR1B = ICR1 / 2;
+    OCR1A = 999;   // 先给个默认值
+    digitalWrite(9, LOW);
 }
+
 
 void timer1_set_freq(uint32_t hz) {
     if (hz < 1) hz = 1;
 
-    uint32_t top = F_CPU / hz - 1;
-    if (top < 10) top = 10;
+    uint32_t top = F_CPU / (2UL * hz) - 1;
     if (top > 65535) top = 65535;
+    if (top < 1) top = 1;
 
-    ICR1  = top;
-    OCR1B = top / 2;
+    OCR1A = (uint16_t)top;
 
-    // ✅ 显式启用 OC1B（关键）
-    TCCR1A |= (1 << COM1B1);
+    // 确保 OC1A 连接
+    TCCR1A |= (1 << COM1A0);
+
+    // ⭐关键：确保 Timer1 在跑（stop 过必须重启）
+    TCCR1B = (TCCR1B & ~((1<<CS12)|(1<<CS11)|(1<<CS10)))
+           | (1<<CS10);
 }
 
-
 void timer1_stop() {
-    TCCR1A &= ~(1 << COM1B1);
-    digitalWrite(10, LOW);
+    // 停止计数器
+    TCCR1B &= ~((1<<CS12)|(1<<CS11)|(1<<CS10));
+
+    // 断开 OC1A
+    TCCR1A &= ~(1 << COM1A0);
+
+    digitalWrite(9, LOW);
 }
 
 // ===== Timer2 : OC2A = D11 (CTC toggle, 50% 方波) =====
@@ -145,7 +148,7 @@ public:
 
         uint32_t hz = (speedHz <= 0) ? 1 : (uint32_t)speedHz;
 
-        if (pulPin == 10) {
+        if (pulPin == 9) {
             timer1_set_freq(hz);
         } else if (pulPin == 11) {
             timer2_set_freq(hz);
@@ -178,7 +181,7 @@ public:
         // ===== BF：到时间就停 =====
         if (!pulseMode) {
             if ((long)(now - stopTime) >= 0) {
-                if (pulPin == 10) timer1_stop();
+                if (pulPin == 9) timer1_stop();
                 else if (pulPin == 11) timer2_stop();
                 running = false;
             }
@@ -205,7 +208,7 @@ public:
 #define NUM_MOTORS 2
 
 DM542 motors[NUM_MOTORS] = {
-  DM542(10, 6),   // Motor 0
+  DM542(9, 7),   // Motor 0
   DM542(11, 2)    // Motor 1
 };
 
