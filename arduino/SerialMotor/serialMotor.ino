@@ -138,8 +138,8 @@ bool receiving = false;
 #define NUM_MOTORS 2
 
 DM542 motors[NUM_MOTORS] = {
-  DM542(7, 6),   // Motor 0
-  DM542(3, 2)    // Motor 1
+  DM542(9, 7),   // Motor 0
+  DM542(11, 2)    // Motor 1
 };
 
 
