@@ -1,0 +1,37 @@
+.program radar_sync
+
+; FIFO Protocol
+; Word 0: STEP_RATIO        (ratio，>= 1)
+; Word 1: RADAR_PULSE_LEN  (pulse_len，>= 1，单位：PIO cycle)
+
+.wrap_target
+    ; ========= 初始化参数 =========
+    pull block
+    mov  y, osr        ; y = STEP_RATIO
+
+    pull block
+    mov  isr, osr      ; isr = RADAR_PULSE_LEN
+
+    ; ========= step_index = 0 → 立即触发 =========
+fire_pulse:
+    set  pins, 1
+
+    mov  x, isr
+pulse_delay:
+    nop
+    jmp  x-- pulse_delay
+
+    set  pins, 0
+
+    ; ========= 初始化计数器 =========
+    mov  x, y          ; x = STEP_RATIO
+
+wait_step:
+    ; ===== 等待 STEP 上升沿 =====
+    wait 1 pin
+    wait 0 pin
+
+    ; ===== 计数并判断 =====
+    jmp  x-- fire_pulse
+    jmp  wait_step
+.wrap

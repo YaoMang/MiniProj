@@ -1,0 +1,59 @@
+.program motor_exec
+
+; FIFO Protocol
+
+; Start:
+; Word 0: DIR (bit0)
+
+; Running:
+; Word 1: delay_count
+; Word 2: steps
+
+; End:
+; delay_count = 0 AND steps = 0
+
+.wrap_target
+    ; ========= 初始化：设置 DIR =========
+    pull block
+    out  pins, 1        ; bit0 -> DIR
+
+wait_cmd:
+    ; ========= 读取 speed =========
+    pull block
+    mov  isr, osr       ; isr = delay_count
+
+    ; ========= 读取 steps =========
+    pull block
+    mov  y, osr         ; y = steps
+
+    ; ========= 0 0 → 本轮结束 =========
+    mov  x, isr
+    or   x, y
+    jmp  !x wait_init   ; delay==0 && steps==0
+
+step_loop:
+    ; ===== STEP 上升沿（纵向可同时驱 2 pin）=====
+    set  pins, 1        ; STEP = 1
+    nop  [PULSE_WIDTH]
+
+    ; ===== STEP 下降沿 =====
+    set  pins, 0
+
+    ; ===== 整数分频延时 =====
+    mov  x, isr
+delay_loop:
+    nop
+    jmp  x-- delay_loop
+
+    ; ===== 步数递减 =====
+    jmp  y-- step_loop
+
+    ; ===== 下一条指令 =====
+    jmp  wait_cmd
+
+wait_init:
+    ; 等待下一轮初始化 DIR
+    pull block
+    out  pins, 1
+    jmp  wait_cmd
+.wrap
