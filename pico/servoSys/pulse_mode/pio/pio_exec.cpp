@@ -6,6 +6,9 @@
 #include "motor_exec.pio.h"
 #include "radar_sync.pio.h"
 
+#include <math.h>
+
+
 void motor_exec_init(
     PIO pio,
     uint sm,
@@ -37,4 +40,45 @@ void motor_exec_init(
 
     // 启动
     pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline double pio_freq_hz() {
+    return (double)clock_get_hz(clk_sys);
+}
+
+uint32_t hz_to_duty_period(double hz) {
+    if (hz <= 0.0) return 0;
+
+    double f_sys = pio_freq_hz();
+
+    // duty = (f_sys / f - 3) / 2
+    double d = (f_sys / hz - 3.0) * 0.5;
+
+    if (d <= 0.0) return 1; // 最小合法 duty_period
+
+    return (uint32_t)llround(d);
+}
+
+uint32_t period_to_duty_period(double period_s) {
+    if (period_s <= 0.0) return 0;
+
+    double f_sys = pio_freq_hz();
+    double cycles = period_s * f_sys;
+
+    double d = (cycles - 3.0) * 0.5;
+    if (d <= 0.0) return 1;
+
+    return (uint32_t)llround(d);
+}
+
+uint32_t rpm_to_duty_period(double rpm, uint32_t pulses_per_rev) {
+    if (rpm <= 0.0 || pulses_per_rev == 0) return 0;
+
+    double hz = (rpm / 60.0) * pulses_per_rev;
+    return hz_to_duty_period(hz);
+}
+
+uint32_t duration_to_steps(double duration_s, double hz) {
+    if (duration_s <= 0.0 || hz <= 0.0) return 0;
+    return (uint32_t)llround(duration_s * hz);
 }
