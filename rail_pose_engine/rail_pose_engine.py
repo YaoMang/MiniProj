@@ -363,7 +363,7 @@ class RailPoseEngine:
 
         lines = []
         lines.append("[ffmpeg_debug_fake] rail session time base\n")
-        lines.append(f"start_time_abs={t0:.6f}\n")
+        lines.append(f"start:{t0:.6f}\n")
         lines.append("time_origin_rel=0.0\n")
         lines.append("note=this is a fake log to align rail pose timeline with camera workflow\n")
 
