@@ -4,6 +4,8 @@
 ; Word 0: STEP_RATIO        (>= 1)
 ; Word 1: RADAR_PULSE_LEN  (>= 1, PIO cycles)
 
+; RADAR_PULSE_LEN = 16 且 R=1 时 极限频率为 3.4Mhz 外来脉冲，推荐在 2Mhz 以下使用
+
 .wrap_target
     ; ========= 初始化参数 =========
     pull block
