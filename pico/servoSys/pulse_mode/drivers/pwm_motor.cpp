@@ -42,13 +42,46 @@ inline uint pwm_channel(uint pin) {
 inline float choose_clk_div(uint32_t sys_hz, uint32_t freq_hz) {
     if (freq_hz == 0) return 1.0f;
 
-    float div = (float)sys_hz / (float)(freq_hz * 65536ULL);
+    // ---------- tunable policy ----------
+    constexpr uint32_t WRAP_MIN = 400;    // 推荐下限
+    constexpr uint32_t WRAP_MAX = 20000;  // 推荐上限
 
-    if (div < 1.0f)   div = 1.0f;
-    if (div > 256.0f) div = 256.0f;   // RP2040 PWM 上限
+    float best_div = 1.0f;
+    float best_err = 1e30f;
 
-    return div;
+    // clk_div is 8.4 fixed-point → step = 1/16
+    for (int i = 16; i <= 256 * 16; ++i) {
+        float div = i / 16.0f;
+
+        float wrap_f = (float)sys_hz / (div * freq_hz) - 1.0f;
+        if (wrap_f < WRAP_MIN || wrap_f > WRAP_MAX)
+            continue;
+
+        uint32_t wrap = (uint32_t)(wrap_f + 0.5f);
+
+        // 实际频率
+        float real_freq =
+            (float)sys_hz / (div * (wrap + 1));
+
+        float err = fabsf(real_freq - freq_hz);
+
+        if (err < best_err) {
+            best_err = err;
+            best_div = div;
+        }
+    }
+
+    // fallback：保证不会返回非法值
+    if (best_err == 1e30f) {
+        float div = (float)sys_hz / (freq_hz * 65536.0f);
+        if (div < 1.0f) div = 1.0f;
+        if (div > 256.0f) div = 256.0f;
+        best_div = div;
+    }
+
+    return best_div;
 }
+
 
 // ------------------------------------------------------------
 // NEW: force idle level to LOW (release PWM mux + drive GPIO low)
