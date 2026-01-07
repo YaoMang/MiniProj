@@ -8,6 +8,38 @@
 
 #include <math.h>
 
+// ------------------------------------------------------------
+// Internal program registry (per PIO)
+// ------------------------------------------------------------
+
+namespace {
+
+// Pico 只有两个 PIO
+static bool     program_loaded[2] = { false, false };
+static uint     program_offset[2] = { 0, 0 };
+
+static inline uint pio_index(PIO pio) {
+    return (pio == pio0) ? 0u : 1u;
+}
+
+} // namespace
+
+// ------------------------------------------------------------
+// Public API
+// ------------------------------------------------------------
+
+uint motor_exec_ensure_program(PIO pio) {
+    const uint idx = pio_index(pio);
+
+    if (!program_loaded[idx]) {
+        program_offset[idx] =
+            pio_add_program(pio, &motor_exec_program);
+        program_loaded[idx] = true;
+    }
+
+    return program_offset[idx];
+}
+
 // ============================================================
 // PIO init (STEP-only)
 // ============================================================

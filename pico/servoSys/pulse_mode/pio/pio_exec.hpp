@@ -22,6 +22,15 @@ void motor_exec_run(
     uint32_t steps
 );
 
+// ------------------------------------------------------------
+// PIO program loader (shared, idempotent)
+// ------------------------------------------------------------
+
+// Ensure motor_exec_program is loaded into given PIO.
+// Safe to call multiple times.
+// Returns program offset inside the PIO instruction memory.
+uint motor_exec_ensure_program(PIO pio);
+
 // =======================
 // DMA stream execution
 // =======================
