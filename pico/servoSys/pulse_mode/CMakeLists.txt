@@ -19,6 +19,14 @@ add_executable(pulse_mode
     
     pio/pio_exec.cpp
     pio/pio_test.cpp
+
+    drivers/ps100.cpp
+    drivers/pwm_motor.cpp
+)
+
+target_include_directories(pulse_mode
+    PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
 )
 
 # ================================
@@ -41,6 +49,9 @@ target_link_libraries(pulse_mode
     pico_stdlib
     hardware_pio
     hardware_dma
+    hardware_pwm
+    hardware_gpio
+    hardware_clocks
 )
 
 # ================================

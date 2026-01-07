@@ -40,13 +40,13 @@ static const char* reason_name(PS100_P::CompletionReason r) {
 static void print_help() {
     printf(
         "\nCommands:\n"
-        "  backend pwm|pio\n"
-        "  run  <hz> <steps>\n"
-        "  runv <hz> <ms>\n"
-        "  stream <hz> <steps>\n"
-        "  stop\n"
-        "  status\n"
-        "  dir <0|1>\n"
+        "  backend pwm|pio      select backend\n"
+        "  run  <hz> <steps>    fixed steps\n"
+        "  runv <hz> <ms>       velocity segment\n"
+        "  stream <hz> <steps> PIO raw stream (PIO only)\n"
+        "  stop                 immediate stop\n"
+        "  status               show COM1 / COM2 state\n"
+        "  dir <0|1>            direction\n"
         "  help\n\n"
     );
 }
@@ -59,19 +59,23 @@ int main() {
     stdio_init_all();
     sleep_ms(2000);
 
-    printf("\nPS100 acceptance test ready.\n");
+    printf("\nPS100_P acceptance test ready.\n");
     print_help();
 
     // -------- create PS100 --------
 
     PS100_P::Config cfg{};
-    cfg.step_pin = STEP_PIN;
-    cfg.dir_pin  = DIR_PIN;
+    cfg.step_pin   = STEP_PIN;
+    cfg.dir_pin    = DIR_PIN;
     cfg.enable_pin = ENABLE_PIN;
 
     cfg.pio = pio0;
     cfg.sm  = 0;
     cfg.pio_clk_div = 1.0f;
+
+    // ---- ensure PIO program is loaded (shared responsibility) ----
+    cfg.program_offset = motor_exec_ensure_program(cfg.pio);
+    printf("motor_exec program_offset=%u\n", cfg.program_offset);
 
     static PS100_P ps100(cfg);
     motor = &ps100;
@@ -85,7 +89,6 @@ int main() {
 
     while (true) {
         if (fgets(line, sizeof(line), stdin)) {
-            // remove trailing newline
             line[strcspn(line, "\r\n")] = 0;
 
             // ------------------------------------------------
@@ -96,10 +99,10 @@ int main() {
                 if (sscanf(line, "backend %15s", name) == 1) {
                     if (strcmp(name, "pwm") == 0) {
                         current_backend = PS100_P::Backend::PWM;
-                        printf("Backend set to PWM\n");
+                        printf("Backend = PWM\n");
                     } else if (strcmp(name, "pio") == 0) {
                         current_backend = PS100_P::Backend::PIO;
-                        printf("Backend set to PIO\n");
+                        printf("Backend = PIO\n");
                     } else {
                         printf("Unknown backend\n");
                     }
@@ -171,10 +174,13 @@ int main() {
             // status
             // ------------------------------------------------
             else if (strcmp(line, "status") == 0) {
+                bool busy = motor->busy();
+                auto last = motor->last_completion();
+
                 printf(
-                    "busy=%d last=%s\n",
-                    motor->busy() ? 1 : 0,
-                    reason_name(motor->last_completion())
+                    "COM2=%s  COM1=%s\n",
+                    busy ? "Running" : "Empty",
+                    reason_name(last)
                 );
             }
             // ------------------------------------------------
