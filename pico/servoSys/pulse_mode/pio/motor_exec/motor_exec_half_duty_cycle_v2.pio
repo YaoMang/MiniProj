@@ -1,0 +1,65 @@
+.program motor_exec
+
+; ============================================================
+; STEP pulse generator
+;  - Strict 50% duty cycle
+;  - duty_period is linear timing parameter
+;  - End-of-round: duty_period == 0 OR steps == 0
+;
+; Engineering timing model:
+;   High width = duty_period + 3 cycles
+;   Low  width = duty_period + 3 cycles
+;
+; Registers:
+;   ISR : duty_period
+;   Y   : steps
+;   X   : loop counter
+;
+; Pins:
+;   OUT base : DIR
+;   SET base : STEP
+; ============================================================
+
+.wrap_target
+    ; ===== Round start: read DIR =====
+    pull block
+    out  pins, 1            ; DIR <- bit0
+
+wait_cmd:
+    ; ===== Read duty_period =====
+    pull block
+    mov  isr, osr           ; isr = duty_period
+
+    ; ===== Read steps =====
+    pull block
+    mov  y, osr             ; y = steps
+
+    ; ===== End-of-round check =====
+    mov  x, isr
+    jmp  !x wrap_target
+
+    mov  x, y
+    jmp  !x wrap_target
+
+pulse_loop:
+    ; ===== STEP ↑ =====
+    set  pins, 1
+    nop                     ; ★ 对称补偿：高电平 +1 cycle
+
+    ; ---- high level ----
+    mov  x, isr
+high_delay:
+    jmp  x-- high_delay
+
+    ; ===== STEP ↓ =====
+    set  pins, 0
+
+    ; ---- low level ----
+    mov  x, isr
+low_delay:
+    jmp  x-- low_delay
+
+    ; ===== next pulse =====
+    jmp  y-- pulse_loop
+    jmp  wait_cmd
+.wrap

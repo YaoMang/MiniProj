@@ -8,23 +8,21 @@
 ;
 ; Behavior:
 ;   - Execute exactly {steps} pulses
-;   - steps == 0 => no pulse
-;   - 50% duty
+;   - 50% duty (±1 cycle is impossible here)
+;   - After completion: pull next command (block)
+;
+; No DIR, no enable, no boundary logic.
 ; ============================================================
 
 .wrap_target
 wait_cmd:
     pull block
-    mov  isr, osr          ; ISR = duty_period
+    mov  isr, osr          ; isr = duty_period
 
     pull block
-    mov  y, osr            ; Y = steps
+    mov  y, osr            ; y = steps
 
-pulse_gate:
-    jmp  y-- do_pulse      ; if (Y != 0) { Y--; goto do_pulse; }
-    jmp  wait_cmd          ; else -> next command
-
-do_pulse:
+pulse_loop:
     ; ---- STEP high ----
     set  pins, 1
 
@@ -39,5 +37,6 @@ high_delay:
 low_delay:
     jmp  x-- low_delay
 
-    jmp  pulse_gate
-.wrap
+    ; ---- next pulse ----
+    jmp  y-- pulse_loop
+    jmp  wait_cmd
